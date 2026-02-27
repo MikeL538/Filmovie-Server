@@ -20,5 +20,8 @@
     "dev": "%npm_node_execpath% --watch --loader ts-node/esm src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }
