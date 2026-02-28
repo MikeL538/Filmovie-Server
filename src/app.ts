@@ -69,7 +69,19 @@ function getUserFromAuthHeader(authHeader?: string) {
 }
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({ ok: true, service: "filmovie-server" });
+  res.status(200).json({
+    ok: true,
+    service: "filmovie-server",
+    message: "Filmovie-Server is Running",
+  });
+});
+
+app.get("/", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "filmovie-server",
+    message: "Filmovie-Server is Running",
+  });
 });
 
 app.post("/api/auth/login", (req, res) => {
