@@ -2,46 +2,55 @@
   "users": [
     {
       "id": 1,
-      "login": "test",
-      "password": "test",
+      "login": "qwe",
+      "hashedPassword": "qwe",
+      "email": "qwe@gmail.com",
+      "verified": true,
       "watched": [
-        603,
-        238
+        1265609,
+        696393,
+        687163
       ],
       "queued": [
-        155,
-        27205
+        1265609,
+        1159559
       ]
     },
     {
       "id": 2,
-      "login": "test2",
-      "password": "test2",
-      "watched": [
-        1236153,
-        1272837,
-        1428862
-      ],
-      "queued": [
-        755,
-        2205
-      ]
+      "login": "qwer",
+      "hashedPassword": "$2b$12$GMRiACH/KJJSYSVWN/W20.BFQaPS/bwqbYcqeQBnnv.b0rHlN6Snq",
+      "email": "qwer@gmail.com",
+      "verified": false,
+      "watched": [],
+      "queued": []
     },
     {
       "id": 3,
-      "login": "test3",
-      "password": "test3",
+      "login": "qwert",
+      "hashedPassword": "$2b$12$SghkOFOiPj1UBq8sG.R2FeA/7wQy49q5ArtHqBaNznNEAiMPjIWLO",
+      "email": "qwert@gmail.com",
+      "verified": false,
       "watched": [],
       "queued": []
     },
     {
       "id": 4,
       "login": "Mike",
-      "password": "qwe",
+      "hashedPassword": "$2b$12$DyWX09RQXYa5stTghUY1t.rB8Lk/76qJV8yzqJjw10DyQCvQkHAZ6",
+      "email": "Mike@gmail.com",
+      "verified": false,
       "watched": [],
-      "queued": [
-        1159559
-      ]
+      "queued": []
+    },
+    {
+      "id": 5,
+      "login": "Mike2",
+      "hashedPassword": "$2b$12$LvtKxMFGpv26Y74KHpSP6uuIl/ZM0qipPVDURdTscZU4g9Y0XfVVa",
+      "email": "Mike2@gmail.com",
+      "verified": false,
+      "watched": [],
+      "queued": []
     }
   ]
 }

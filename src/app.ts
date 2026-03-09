@@ -1,13 +1,19 @@
 import express from "express";
 import cors from "cors";
 import fs from "fs/promises";
+import bcrypt from "bcrypt";
+
 export const app = express();
+const SALT_ROUNDS = 12;
 
 const allowedOrigins = [
   "http://localhost:1234", // Parcel dev
   "http://localhost:3000", // jeśli frontend czasem tu działa
   "https://mikel538.github.io", // GitHub Pages origin
 ];
+
+// Testing function for delay
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 app.use(
   cors({
@@ -25,7 +31,9 @@ app.use(express.json());
 type User = {
   id: number;
   login: string;
-  password: string;
+  hashedPassword: string;
+  email: string;
+  verified: boolean;
   watched: number[];
   queued: number[];
 };
@@ -84,14 +92,29 @@ app.get("/", (_req, res) => {
   });
 });
 
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { login, password } = req.body ?? {};
 
-  const user = users.find((u) => u.login === login && u.password === password);
+  const user = users.find((u) => u.login === login);
 
   if (!user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
+
+  const passwordMatches = user.hashedPassword.startsWith("$2")
+    ? await bcrypt.compare(password, user.hashedPassword)
+    : password === user.hashedPassword;
+
+  if (!passwordMatches) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // ========= Email verification =========
+  // const isVerified = user.verified === true;
+
+  // if (!isVerified) {
+  //   return res.status(403).json({ message: "User not verified" });
+  // }
 
   const token = `token-${user.id}`;
   return res.status(200).json({
@@ -146,21 +169,34 @@ app.put("/api/users/me/lists/:listName", async (req, res) => {
 });
 
 app.post("/api/auth/register", async (req, res) => {
-  const { login, password } = req.body ?? {};
+  const { login, password, email } = req.body ?? {};
 
-  if (!login || !password) {
+  if (!login || !password || !email) {
     return res.status(400).json({ message: "Login and password are required" });
   }
 
-  const exists = users.some((u) => u.login === login);
-  if (exists) {
-    return res.status(409).json({ message: "Login already exists" });
+  const existsUser = users.some((u) => u.login === login);
+  if (existsUser) {
+    return res
+      .status(409)
+      .json({ code: "LOGIN_ALREADY_EXISTS", message: "Login already exists" });
   }
 
+  const existsEmail = users.some((u) => u.email === email);
+  if (existsEmail) {
+    return res
+      .status(409)
+      .json({ code: "EMAIL_ALREADY_EXISTS", message: "Email already exists" });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
   const newUser: User = {
-    id: users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1,
+    id: users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1 || 0,
     login,
-    password,
+    hashedPassword: hashedPassword,
+    email,
+    verified: false,
     watched: [],
     queued: [],
   };
