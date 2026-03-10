@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import fs from "fs/promises";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 
 export const app = express();
 const SALT_ROUNDS = 12;
@@ -11,6 +12,9 @@ const allowedOrigins = [
   "http://localhost:3000", // jeśli frontend czasem tu działa
   "https://mikel538.github.io", // GitHub Pages origin
 ];
+
+const API_BASE_URL = "https://filmoteka-server-oso6.onrender.com";
+// const API_BASE_URL = 'http://localhost:3000';
 
 // Testing function for delay
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,8 +38,11 @@ type User = {
   hashedPassword: string;
   email: string;
   verified: boolean;
+  verificationTokenHash: string | null;
+  verificationTokenExpiresAt: Date | null;
   watched: number[];
   queued: number[];
+  activationLink: string | null;
 };
 
 async function loadUsers(): Promise<User[]> {
@@ -92,6 +99,100 @@ app.get("/", (_req, res) => {
   });
 });
 
+app.post("/api/auth/register", async (req, res) => {
+  const { login, password, email } = req.body ?? {};
+
+  if (!login || !password || !email) {
+    return res.status(400).json({ message: "Login and password are required" });
+  }
+
+  const existsUser = users.some((u) => u.login === login);
+  if (existsUser) {
+    return res
+      .status(409)
+      .json({ code: "LOGIN_ALREADY_EXISTS", message: "Login already exists" });
+  }
+
+  const existsEmail = users.some((u) => u.email === email);
+  if (existsEmail) {
+    return res
+      .status(409)
+      .json({ code: "EMAIL_ALREADY_EXISTS", message: "Email already exists" });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+  const verificationToken = crypto.randomBytes(32).toString("hex");
+  const verificationTokenHash = crypto
+    .createHash("sha256")
+    .update(verificationToken)
+    .digest("hex");
+
+  const verificationTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  // const activationLink = `http://localhost:3000/api/auth/verify-email?token=${verificationToken}`;
+
+  const activationLink = `${API_BASE_URL}/api/auth/verify-email?token=${verificationToken}`;
+
+  const newUser: User = {
+    id: users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1 || 0,
+    login,
+    hashedPassword: hashedPassword,
+    email,
+    verified: false,
+    verificationTokenHash,
+    verificationTokenExpiresAt,
+    watched: [],
+    queued: [],
+    activationLink,
+  };
+
+  users.push(newUser);
+  await saveUsers(users);
+
+  // activation link for tests
+  console.log("Activation link:", activationLink);
+
+  return res.status(201).json({
+    code: "VERIFICATION_EMAIL_SENT",
+    message: "Verification email sent",
+  });
+});
+
+app.get("/api/auth/verify-email", async (req, res) => {
+  const token = String(req.query.token ?? "");
+
+  if (!token) {
+    return res.status(400).json({ code: "TOKEN_REQUIRED" });
+  }
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = users.find((u) => u.verificationTokenHash === tokenHash);
+
+  if (!user) {
+    return res.status(400).json({ code: "INVALID_TOKEN" });
+  }
+
+  if (
+    !user.verificationTokenExpiresAt ||
+    new Date(user.verificationTokenExpiresAt).getTime() < Date.now()
+  ) {
+    return res.status(400).json({ code: "TOKEN_EXPIRED" });
+  }
+
+  user.verified = true;
+  user.verificationTokenHash = null;
+  user.verificationTokenExpiresAt = null;
+
+  await saveUsers(users);
+
+  return res.status(200).json({
+    code: "EMAIL_VERIFIED",
+    message: "Email verified successfully",
+  });
+});
+
 app.post("/api/auth/login", async (req, res) => {
   const { login, password } = req.body ?? {};
 
@@ -110,11 +211,15 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   // ========= Email verification =========
-  // const isVerified = user.verified === true;
+  const isVerified = user.verified === true;
 
-  // if (!isVerified) {
-  //   return res.status(403).json({ message: "User not verified" });
-  // }
+  if (!isVerified) {
+    return res.status(403).json({
+      code: "NOT_VERIFIED",
+      message: "User not verified",
+      activationLink: user.activationLink,
+    });
+  }
 
   const token = `token-${user.id}`;
   return res.status(200).json({
@@ -165,49 +270,5 @@ app.put("/api/users/me/lists/:listName", async (req, res) => {
   return res.status(200).json({
     watched: user.watched,
     queued: user.queued,
-  });
-});
-
-app.post("/api/auth/register", async (req, res) => {
-  const { login, password, email } = req.body ?? {};
-
-  if (!login || !password || !email) {
-    return res.status(400).json({ message: "Login and password are required" });
-  }
-
-  const existsUser = users.some((u) => u.login === login);
-  if (existsUser) {
-    return res
-      .status(409)
-      .json({ code: "LOGIN_ALREADY_EXISTS", message: "Login already exists" });
-  }
-
-  const existsEmail = users.some((u) => u.email === email);
-  if (existsEmail) {
-    return res
-      .status(409)
-      .json({ code: "EMAIL_ALREADY_EXISTS", message: "Email already exists" });
-  }
-
-  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-
-  const newUser: User = {
-    id: users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1 || 0,
-    login,
-    hashedPassword: hashedPassword,
-    email,
-    verified: false,
-    watched: [],
-    queued: [],
-  };
-
-  users.push(newUser);
-  await saveUsers(users);
-
-  const token = `token-${newUser.id}`;
-  return res.status(201).json({
-    token,
-    user: { id: newUser.id, login: newUser.login },
-    lists: { watched: [], queued: [] },
   });
 });
