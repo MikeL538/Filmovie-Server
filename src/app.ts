@@ -13,8 +13,8 @@ const allowedOrigins = [
   "https://mikel538.github.io", // GitHub Pages origin
 ];
 
-const API_BASE_URL = "https://filmoteka-server-oso6.onrender.com";
-// const API_BASE_URL = 'http://localhost:3000';
+// const API_BASE_URL = "https://filmoteka-server-oso6.onrender.com";
+const API_BASE_URL = "http://localhost:3000";
 
 // Testing function for delay
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -130,8 +130,6 @@ app.post("/api/auth/register", async (req, res) => {
 
   const verificationTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  // const activationLink = `http://localhost:3000/api/auth/verify-email?token=${verificationToken}`;
-
   const activationLink = `${API_BASE_URL}/api/auth/verify-email?token=${verificationToken}`;
 
   const newUser: User = {
@@ -149,9 +147,6 @@ app.post("/api/auth/register", async (req, res) => {
 
   users.push(newUser);
   await saveUsers(users);
-
-  // activation link for tests
-  console.log("Activation link:", activationLink);
 
   return res.status(201).json({
     code: "VERIFICATION_EMAIL_SENT",

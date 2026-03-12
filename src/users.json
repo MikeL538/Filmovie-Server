@@ -6,8 +6,43 @@
       "hashedPassword": "qwe",
       "email": "qwe@gmail.com",
       "verified": true,
-      "watched": [1265609, 696393, 687163],
-      "queued": [1265609, 1159559]
+      "watched": [
+        1265609,
+        696393,
+        687163
+      ],
+      "queued": [
+        1265609,
+        1159559
+      ]
+    },
+    {
+      "id": 2,
+      "login": "Agnes",
+      "hashedPassword": "$2b$12$WY9DaLMLr1J3wzXHdUNF2OclKbXj6Bq8D7I4kP0Q9YZXQFulrX5ku",
+      "email": "agnieszkanisiewicz99@gmail.com",
+      "verified": true,
+      "verificationTokenHash": null,
+      "verificationTokenExpiresAt": null,
+      "watched": [
+        1401281
+      ],
+      "queued": [
+        1226863
+      ],
+      "activationLink": "http://localhost:3000/api/auth/verify-email?token=2ca571ca8c2d45102a6ffc81f8a399c0e5bd835a2469a785eecb99e2842e0a8f"
+    },
+    {
+      "id": 3,
+      "login": "123",
+      "hashedPassword": "$2b$12$8nqfbb6HBZA9XHCMR39JzuqclvJmp9lKVKChJ1UhYwHSf/3KQkedW",
+      "email": "123@gmail.com",
+      "verified": false,
+      "verificationTokenHash": "204376c527bec47d3b853942d791b32d6fcb24a483bcba86c90ac3d5247d2b18",
+      "verificationTokenExpiresAt": "2026-03-12T07:35:21.357Z",
+      "watched": [],
+      "queued": [],
+      "activationLink": "http://localhost:3000/api/auth/verify-email?token=3a8b5ea5e8243e29a8815bbee968881bcb0c268ecad7d7eba658615aca12ed0c"
     }
   ]
 }
