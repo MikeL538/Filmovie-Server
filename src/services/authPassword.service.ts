@@ -24,12 +24,11 @@ export async function loginUser(req: Request, res: Response) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  // ========= Email verification =========
   const isVerified = user.verified === true;
 
   if (!isVerified) {
     return res.status(403).json({
-      code: "NOT_VERIFIED",
+      code: "LOGIN_403",
       message: "User not verified",
     });
   }
@@ -76,7 +75,7 @@ export async function forgotPassword(req: Request, res: Response) {
     });
   }
 
-  const { data, error } = await resend.emails.send({
+  const { error } = await resend.emails.send({
     from: "Filmovie <reset-password@mail.mikeldev.online>",
     to: email,
     subject: "Reset your password",

@@ -2,7 +2,11 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { Resend } from "resend";
-import { register, verifyEmail } from "./services/authRegistration.service.js";
+import {
+  register,
+  verifyEmail,
+  resendVerificationEmail,
+} from "./services/authRegistration.service.js";
 import {
   loginUser,
   forgotPassword,
@@ -59,6 +63,7 @@ app.get("/", (_req, res) => {
 
 app.post("/api/auth/register", register);
 app.get("/api/auth/verify-email", verifyEmail);
+app.get("/api/auth/resend-verify-email", resendVerificationEmail);
 app.post("/api/auth/login", loginUser);
 app.post("/api/auth/forgot-password", forgotPassword);
 app.post("/api/auth/reset-password", resetPassword);
