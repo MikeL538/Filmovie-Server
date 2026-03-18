@@ -27,64 +27,6 @@ async function sendVerificationEmail(email: string, activationLink: string) {
   }
 }
 
-export async function resendVerificationEmail(req: Request, res: Response) {
-  if (!resend) {
-    console.error("RESEND_API_KEY is missing.");
-    throw new Error("EMAIL_PROVIDER_NOT_CONFIGURED");
-  }
-
-  const login = String(req.query.login ?? "");
-  if (!login) {
-    return res.status(400).json({ code: "LOGIN_REQUIRED" });
-  }
-
-  const users = await loadUsers();
-  const user = users.find((u) => u.login === login);
-
-  if (!user) {
-    return res.status(404).json({ code: "USER_NOT_FOUND" });
-  }
-
-  if (user.verified) {
-    return res.status(400).json({ code: "ALREADY_VERIFIED" });
-  }
-
-  const verificationToken = crypto.randomBytes(32).toString("hex");
-  const verificationTokenHash = crypto
-    .createHash("sha256")
-    .update(verificationToken)
-    .digest("hex");
-
-  const activationLink = `${API_BASE_URL}/api/auth/verify-email?token=${verificationToken}`;
-
-  user.verificationTokenHash = verificationTokenHash;
-  user.verificationTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-  user.activationLink = activationLink;
-
-  await saveUsers(users);
-
-  const { error } = await resend.emails.send({
-    from: "Filmovie <verify231@mail.mikeldev.online>",
-    to: user.email,
-    subject: "Verify your account",
-    html: `<p>Click <a href="${activationLink}">here</a> to verify Your account or use link below:</p>
-   
-    <p><a href="${activationLink}">${activationLink}</a></p>`,
-  });
-
-  if (error) console.log("RESEND ERROR:", error);
-
-  if (error) {
-    throw new Error("VERIFICATION_EMAIL_FAILED");
-  }
-
-  return res.status(200).json({
-    code: "VERIFICATION_EMAIL_RESENT",
-    message: "Verification email resent",
-  });
-}
-
 export async function register(req: Request, res: Response) {
   const { login, password, email } = req.body ?? {};
   const users: User[] = await loadUsers();
@@ -115,7 +57,7 @@ export async function register(req: Request, res: Response) {
     .update(verificationToken)
     .digest("hex");
 
-  const verificationTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const verificationTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
   const activationLink = `${API_BASE_URL}/api/auth/verify-email?token=${verificationToken}`;
 
   try {
@@ -184,5 +126,62 @@ export async function verifyEmail(req: Request, res: Response) {
   return res.status(200).json({
     code: "EMAIL_VERIFIED",
     message: "Email verified successfully",
+  });
+}
+
+export async function resendVerificationEmail(req: Request, res: Response) {
+  const login = String(req.query.login ?? "");
+
+  if (!login) {
+    return res.status(400).json({ code: "LOGIN_REQUIRED" });
+  }
+
+  const users = await loadUsers();
+  const user = users.find((u) => u.login === login);
+
+  if (!user) {
+    return res.status(404).json({ code: "USER_NOT_FOUND" });
+  }
+
+  if (user.verified) {
+    return res.status(400).json({ code: "ALREADY_VERIFIED" });
+  }
+
+  const expiresAt = user.verificationTokenExpiresAt
+    ? new Date(user.verificationTokenExpiresAt).getTime()
+    : 0;
+
+  const minutesLeft = Math.floor((expiresAt - Date.now()) / (60 * 1000));
+
+  if (minutesLeft > 58) {
+    return res.status(429).json({ code: "RESEND_TOO_EARLY" });
+  }
+
+  const verificationToken = crypto.randomBytes(32).toString("hex");
+  const verificationTokenHash = crypto
+    .createHash("sha256")
+    .update(verificationToken)
+    .digest("hex");
+
+  const activationLink = `${API_BASE_URL}/api/auth/verify-email?token=${verificationToken}`;
+
+  user.verificationTokenHash = verificationTokenHash;
+  user.verificationTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  user.activationLink = activationLink;
+
+  try {
+    await sendVerificationEmail(user.email, activationLink);
+  } catch (error) {
+    return res.status(502).json({
+      code: "VERIFICATION_EMAIL_FAILED",
+      message: "Failed to send verification email",
+    });
+  }
+
+  await saveUsers(users);
+
+  return res.status(200).json({
+    code: "VERIFICATION_EMAIL_RESENT",
+    message: "Verification email resent",
   });
 }

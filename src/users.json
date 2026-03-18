@@ -1,3 +1,18 @@
 {
-  "users": []
+  "users": [
+    {
+      "id": 1,
+      "login": "qwe",
+      "hashedPassword": "$2b$12$69JDk3fKiONOQbDrsKqBTOgQ6k.O2dH7od4mXgFY14OOGglsMgLhq",
+      "email": "zixlip@gmail.com",
+      "verified": true,
+      "verificationTokenHash": null,
+      "verificationTokenExpiresAt": null,
+      "passwordResetTokenHash": null,
+      "passwordResetTokenExpiresAt": null,
+      "watched": [],
+      "queued": [],
+      "activationLink": null
+    }
+  ]
 }
