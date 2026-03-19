@@ -23,11 +23,18 @@ const allowedOrigins = [
   "https://mikel538.github.io", // GitHub Pages origin
 ];
 
+// Old manual way of setting URLs
 // export const API_BASE_URL = "https://filmovie-server.onrender.com";
 // export const FRONTEND_BASE_URL = "https://mikel538.github.io/Filmovie";
+// export const API_BASE_URL = "http://localhost:3000";
+// export const FRONTEND_BASE_URL = "http://localhost:1234/Filmovie";
 
-export const API_BASE_URL = "http://localhost:3000";
-export const FRONTEND_BASE_URL = "http://localhost:1234/Filmovie";
+// If env has urls, if not ->
+export const API_BASE_URL =
+  process.env.API_BASE_URL || "https://filmovie-server.onrender.com";
+
+export const FRONTEND_BASE_URL =
+  process.env.FRONTEND_BASE_URL || "https://mikel538.github.io/Filmovie";
 
 export const resendApiKey = process.env.RESEND_API_KEY;
 export const resend = resendApiKey ? new Resend(resendApiKey) : null;
