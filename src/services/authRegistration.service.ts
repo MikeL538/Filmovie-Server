@@ -35,7 +35,33 @@ export async function register(req: Request, res: Response) {
     return res.status(400).json({ message: "Login and password are required" });
   }
 
-  const existsUser = users.some((u) => u.login === login);
+  if (typeof login !== "string" || login.length < 3) {
+    return res
+      .status(401)
+      .json({ code: "LOGIN_TOO_SHORT", message: "login too short" });
+  }
+  if (typeof login !== "string" || login.length > 16) {
+    return res
+      .status(422)
+      .json({ code: "LOGIN_TOO_LONG", message: "login too long" });
+  }
+
+  if (typeof password !== "string" || password.length < 3) {
+    return res
+      .status(422)
+      .json({ code: "PASSWORD_TOO_SHORT", message: "password too short" });
+  }
+
+  if (typeof password !== "string" || password.length > 32) {
+    return res
+      .status(422)
+      .json({ code: "PASSWORD_TOO_LONG", message: "password too long" });
+  }
+
+  const loginFormat =
+    login.charAt(0).toUpperCase() + login.slice(1).toLowerCase();
+
+  const existsUser = users.some((u) => u.login === loginFormat);
   if (existsUser) {
     return res
       .status(409)
@@ -71,7 +97,7 @@ export async function register(req: Request, res: Response) {
 
   const newUser: User = {
     id: users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1,
-    login,
+    login: loginFormat,
     hashedPassword,
     email,
     verified: false,
