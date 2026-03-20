@@ -1,7 +1,12 @@
 import type { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import { loadUsers, saveUsers } from "./usersManagment.sevice.js";
+import {
+  loadUsers,
+  saveUsers,
+  getBearerToken,
+} from "./usersManagment.sevice.js";
+
 import type { User } from "../types.js";
 import { FRONTEND_BASE_URL, resend, SALT_ROUNDS } from "../app.js";
 
@@ -10,7 +15,10 @@ export async function loginUser(req: Request, res: Response) {
 
   const users: User[] = await loadUsers();
 
-  const user = users.find((u) => u.login === login);
+  const loginFormat =
+    login.charAt(0).toUpperCase() + login.slice(1).toLowerCase();
+
+  const user = users.find((u) => u.login === loginFormat);
 
   if (!user) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -33,10 +41,22 @@ export async function loginUser(req: Request, res: Response) {
     });
   }
 
-  const token = `token-${user.id}`;
+  const sessionToken = crypto.randomBytes(32).toString("hex");
+  const sessionTokenHash = crypto
+    .createHash("sha256")
+    .update(sessionToken)
+    .digest("hex");
+
+  user.sessionTokenHash = sessionTokenHash;
+  user.sessionTokenExpiresAt = new Date(
+    Date.now() + 60 * 60 * 1000,
+  ).toISOString();
+
+  await saveUsers(users);
+
   return res.status(200).json({
-    token,
-    user: { id: user.id, login: user.login },
+    token: sessionToken,
+    user: { id: user.id, loginFormat: user.login },
     lists: { watched: user.watched, queued: user.queued },
   });
 }
@@ -145,4 +165,32 @@ export async function resetPassword(req: Request, res: Response) {
     code: "PASSWORD_RESET_SUCCESS",
     message: "Password changed successfully",
   });
+}
+
+export async function logoutClearToken(req: Request, res: Response) {
+  const token = getBearerToken(req.headers.authorization);
+
+  if (!token) {
+    return res.status(400).json({ code: "TOKEN_REQUIRED" });
+  }
+
+  const users = await loadUsers();
+
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(String(token))
+    .digest("hex");
+
+  const user = users.find((u) => u.sessionTokenHash === tokenHash);
+
+  if (!user) {
+    return res.status(400).json({ code: "INVALID_TOKEN" });
+  }
+
+  user!.sessionTokenExpiresAt = null;
+  user!.sessionTokenHash = null;
+
+  await saveUsers(users);
+
+  return res.status(200).json({ code: "LOGOUT_SUCCESS" });
 }

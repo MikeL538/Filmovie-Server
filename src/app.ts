@@ -11,6 +11,7 @@ import {
   loginUser,
   forgotPassword,
   resetPassword,
+  logoutClearToken,
 } from "./services/authPassword.service.js";
 import { getUserLists, listName } from "./services/usersManagment.sevice.js";
 
@@ -74,5 +75,6 @@ app.get("/api/auth/resend-verify-email", resendVerificationEmail);
 app.post("/api/auth/login", loginUser);
 app.post("/api/auth/forgot-password", forgotPassword);
 app.post("/api/auth/reset-password", resetPassword);
+app.post("/api/auth/logout", logoutClearToken);
 app.get("/api/users/me/lists", getUserLists);
 app.put("/api/users/me/lists/:listName", listName);

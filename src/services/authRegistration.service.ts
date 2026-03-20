@@ -105,6 +105,8 @@ export async function register(req: Request, res: Response) {
     verificationTokenExpiresAt,
     passwordResetTokenHash: null,
     passwordResetTokenExpiresAt: null,
+    sessionTokenHash: null,
+    sessionTokenExpiresAt: null,
     watched: [],
     queued: [],
     activationLink,
@@ -158,12 +160,15 @@ export async function verifyEmail(req: Request, res: Response) {
 export async function resendVerificationEmail(req: Request, res: Response) {
   const login = String(req.query.login ?? "");
 
-  if (!login) {
+  const loginFormat =
+    login.charAt(0).toUpperCase() + login.slice(1).toLowerCase();
+
+  if (!loginFormat) {
     return res.status(400).json({ code: "LOGIN_REQUIRED" });
   }
 
   const users = await loadUsers();
-  const user = users.find((u) => u.login === login);
+  const user = users.find((u) => u.login === loginFormat);
 
   if (!user) {
     return res.status(404).json({ code: "USER_NOT_FOUND" });

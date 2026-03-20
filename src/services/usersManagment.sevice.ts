@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import type { User } from "../types.js";
 import fs from "fs/promises";
+import crypto from "crypto";
 
 export async function loadUsers(): Promise<User[]> {
   try {
@@ -21,7 +22,7 @@ export async function saveUsers(users: User[]): Promise<void> {
   );
 }
 
-function getBearerToken(authHeader?: string): string | null {
+export function getBearerToken(authHeader?: string): string | null {
   if (!authHeader?.startsWith("Bearer ")) return null;
 
   return authHeader.slice("Bearer ".length);
@@ -31,14 +32,25 @@ async function getUserFromAuthHeader(
   authHeader?: string,
 ): Promise<User | null> {
   const users = await loadUsers();
+
   const token = getBearerToken(authHeader);
   if (!token) return null;
 
-  const match = token.match(/^token-(\d+)$/);
-  if (!match) return null;
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-  const userId = Number(match[1]);
-  return users.find((u) => u.id === userId) ?? null;
+  const user = users.find((u) => u.sessionTokenHash === tokenHash);
+
+  if (
+    !user?.sessionTokenExpiresAt ||
+    new Date(user.sessionTokenExpiresAt).getTime() < Date.now()
+  ) {
+    user!.sessionTokenHash = null;
+    user!.sessionTokenExpiresAt = null;
+    await saveUsers(users);
+    return null;
+  }
+
+  return user;
 }
 
 export async function getUserLists(req: Request, res: Response) {
@@ -56,19 +68,13 @@ export async function getUserLists(req: Request, res: Response) {
 
 export async function listName(req: Request, res: Response) {
   const users = await loadUsers();
-  const token = getBearerToken(req.headers.authorization);
+  const authUser = await getUserFromAuthHeader(req.headers.authorization);
 
-  if (!token) {
+  if (!authUser) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  const match = token.match(/^token-(\d+)$/);
-  if (!match) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-  const userId = Number(match[1]);
-  const user = users.find((u) => u.id === userId);
+  const user = users.find((u) => u.id === authUser.id);
 
   if (!user) {
     return res.status(401).json({ message: "Unauthorized" });
