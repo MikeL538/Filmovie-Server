@@ -17,8 +17,8 @@
         1314786
       ],
       "activationLink": null,
-      "sessionTokenHash": null,
-      "sessionTokenExpiresAt": null
+      "sessionTokenHash": "a11c194424a55ea05de143db6e973d06c28c71893c0298a739520c771a817e5b",
+      "sessionTokenExpiresAt": "2026-03-21T12:53:50.218Z"
     }
   ]
 }

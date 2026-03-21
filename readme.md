@@ -1,7 +1,8 @@
 # Filmovie-Server
 
 Filmovie-Server is the backend API for the Filmovie application. It handles authentication,
-account verification, and per-user movie list persistence used by the frontend.
+email verification, password reset, logout, and per-user movie list synchronization for the
+frontend.
 
 Production API: https://filmovie-server.onrender.com
 
@@ -10,8 +11,10 @@ Frontend project: https://github.com/MikeL538/Filmovie
 ## What It Provides
 
 - user registration
-- login
-- email verification flow
+- email verification by email link
+- verification email resend flow
+- login and logout
+- forgot-password and reset-password flow
 - protected user endpoints
 - `watched` and `queued` movie lists per user
 - list synchronization for the Filmovie frontend
@@ -21,14 +24,15 @@ Frontend project: https://github.com/MikeL538/Filmovie
 
 The current running backend is an Express API written in TypeScript.
 
-At the moment, user data is persisted in `src/users.json`, which means:
+The project is moving toward a database-backed architecture with Prisma and PostgreSQL, but the
+current runtime still persists users and lists in `src/users.json`.
 
-- authentication and list persistence work
-- email verification tokens are stored with the user record
-- data storage is file-based in the current implementation
+That means:
 
-The repository also includes Prisma and PostgreSQL configuration, but the active server logic is not
-using Prisma yet in the current runtime flow.
+- the active runtime is still file-based
+- Prisma and PostgreSQL are already configured in the repository
+- the README should treat database support as the target architecture, not the current persistence
+  layer
 
 ## Tech Stack
 
@@ -39,25 +43,36 @@ using Prisma yet in the current runtime flow.
 - bcrypt
 - crypto
 - dotenv
-- Prisma configuration included
+- Prisma
+- PostgreSQL-ready configuration
+- Resend
 - Docker
 
 ## Features
 
 ### Authentication
 
-- `POST /api/auth/register` registers a new user
+- `POST /api/auth/register` creates a new account
 - `POST /api/auth/login` logs in a verified user
+- `POST /api/auth/logout` clears the current session token
 - passwords are hashed with `bcrypt`
-- login returns a token and the user's movie lists
+- session tokens are random values, stored only as SHA-256 hashes
+- login returns the current user lists together with the session token
 
 ### Email Verification
 
 - registration creates a verification token
-- the backend stores only the token hash
+- the backend stores only the verification token hash
 - verification is handled by `GET /api/auth/verify-email?token=...`
+- `GET /api/auth/resend-verify-email?login=...` sends a new verification email
 - unverified users cannot log in
-- when login is blocked, the API returns an activation link in the response
+
+### Password Reset
+
+- `POST /api/auth/forgot-password` sends a reset-password email
+- reset links point to the frontend reset page
+- `POST /api/auth/reset-password` sets a new password using the reset token
+- reset tokens are stored only as hashes and expire after a limited time
 
 ### User Lists
 
@@ -88,12 +103,20 @@ Request body:
 }
 ```
 
+Behavior:
+
+- normalizes login to `Firstletterrestlowercase`
+- rejects duplicate login or email
+- hashes password before saving
+- sends a verification email before returning success
+
 Possible responses:
 
 - `201 Created` when registration succeeds
-- `409 Conflict` if login already exists
-- `409 Conflict` if email already exists
 - `400 Bad Request` if required fields are missing
+- `401` or `422` for invalid login/password length
+- `409 Conflict` if login or email already exists
+- `502 Bad Gateway` if verification email sending fails
 
 #### `GET /api/auth/verify-email?token=...`
 
@@ -101,6 +124,15 @@ Possible responses:
 
 - `200 OK` when verification succeeds
 - `400 Bad Request` for missing, invalid, or expired token
+
+#### `GET /api/auth/resend-verify-email?login=...`
+
+Possible responses:
+
+- `200 OK` when a new verification email is sent
+- `400 Bad Request` if login is missing or user is already verified
+- `404 Not Found` if user does not exist
+- `429 Too Many Requests` if resend is requested too early
 
 #### `POST /api/auth/login`
 
@@ -117,10 +149,10 @@ Success response includes:
 
 ```json
 {
-  "token": "token-1",
+  "token": "random-session-token",
   "user": {
     "id": 1,
-    "login": "exampleUser"
+    "loginFormat": "Exampleuser"
   },
   "lists": {
     "watched": [],
@@ -134,12 +166,59 @@ Possible error cases:
 - `401 Unauthorized` for invalid credentials
 - `403 Forbidden` for unverified accounts
 
+#### `POST /api/auth/forgot-password`
+
+Request body:
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+Possible responses:
+
+- `200 OK` when the reset email is sent
+- `400 Bad Request` if email is missing
+- `401 Unauthorized` if no matching user exists
+- `500` if email provider is not configured
+- `502 Bad Gateway` if email sending fails
+
+#### `POST /api/auth/reset-password`
+
+Request body:
+
+```json
+{
+  "token": "reset-token",
+  "password": "newStrongPassword"
+}
+```
+
+Possible responses:
+
+- `200 OK` when password reset succeeds
+- `400 Bad Request` for missing, invalid, or expired token
+
+#### `POST /api/auth/logout`
+
+Requires:
+
+```http
+Authorization: Bearer <session-token>
+```
+
+Possible responses:
+
+- `200 OK` when logout succeeds
+- `400 Bad Request` for missing or invalid token
+
 ### Protected routes
 
 Protected endpoints expect an Authorization header:
 
 ```http
-Authorization: Bearer token-1
+Authorization: Bearer <session-token>
 ```
 
 #### `GET /api/users/me/lists`
@@ -168,6 +247,15 @@ Request body:
 }
 ```
 
+Response returns the updated lists:
+
+```json
+{
+  "watched": [1265609],
+  "queued": [1159559]
+}
+```
+
 ## CORS
 
 The backend currently allows requests from:
@@ -176,18 +264,23 @@ The backend currently allows requests from:
 - `http://localhost:3000`
 - `https://mikel538.github.io`
 
-This covers local Parcel development and the deployed Filmovie frontend on GitHub Pages.
+This covers local development and the deployed Filmovie frontend on GitHub Pages.
 
 ## Project Structure
 
 ```text
 src/
-  app.ts          Express app, routes, auth logic, list handling
-  server.ts       Server bootstrap
-  users.json      File-based user storage
+  app.ts                           Express app, routes, middleware, runtime config
+  server.ts                        Server bootstrap
+  types.ts                         Runtime user type
+  users.json                       Current file-based persistence
+  services/
+    authRegistration.service.ts    Registration and email verification flow
+    authPassword.service.ts        Login, logout, forgot/reset password flow
+    usersManagment.sevice.ts       User loading, auth lookup, and list endpoints
 prisma/
-  schema.prisma   Prisma schema prepared for PostgreSQL
-Dockerfile        Container build for production runtime
+  schema.prisma                    Prisma schema and PostgreSQL datasource
+Dockerfile                         Container build for production runtime
 ```
 
 ## Requirements
@@ -207,14 +300,20 @@ Create a `.env` file in the project root when running locally:
 
 ```env
 PORT=3000
+RESEND_API_KEY=your_resend_api_key
+API_BASE_URL=http://localhost:3000
+FRONTEND_BASE_URL=http://localhost:1234
 DATABASE_URL=your_postgresql_connection_string
 ```
 
 Notes:
 
-- `PORT` is used by the running server
-- `DATABASE_URL` is relevant for the Prisma/PostgreSQL setup present in the repo
-- the active file-based runtime does not require PostgreSQL to start
+- `PORT` controls the local API port
+- `RESEND_API_KEY` is required for registration and password-reset emails
+- `API_BASE_URL` is used to generate verification links
+- `FRONTEND_BASE_URL` is used to generate reset-password links
+- `DATABASE_URL` is currently for the Prisma/PostgreSQL layer prepared in the repo
+- the current runtime can still start without PostgreSQL because active persistence is file-based
 
 ## Available Scripts
 
@@ -250,26 +349,29 @@ npm run start
 The repository includes a multistage Dockerfile.
 
 It builds the TypeScript server, prunes dev dependencies, copies `dist/`, and includes
-`src/users.json` for the current file-based runtime.
+`src/users.json` for the current runtime.
 
 ## Integration With Filmovie Frontend
 
 This backend is used by Filmovie for:
 
 - registration
-- login
-- verification gating before login
+- account verification
+- verification-email resend
+- login and logout
+- password reset
 - downloading user lists on login
 - updating watched and queued lists after user actions
 
-The frontend integration currently lives in the Filmovie repository in:
+The frontend integration currently lives in:
 `src/ts/api/filmovieServerApi.ts`
 
 ## Important Notes
 
-- the current auth token format is development-oriented: `token-{userId}`
-- persistence is currently file-based, not database-backed in runtime
-- Prisma and PostgreSQL setup are present but not yet connected to the active API flow
+- the repository is being prepared for database-backed runtime, but active persistence is still
+  `src/users.json`
+- session tokens, verification tokens, and reset tokens are stored as hashes
+- email sending depends on Resend configuration
 - because the production server is deployed on Render, cold starts may delay the first request
 - there are no automated tests configured in this repository at the moment
 
