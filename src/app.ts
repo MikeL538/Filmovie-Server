@@ -18,24 +18,29 @@ import { getUserLists, listName } from "./services/usersManagment.sevice.js";
 export const app = express();
 export const SALT_ROUNDS = 12;
 
-const allowedOrigins = [
-  "http://localhost:1234", // Parcel dev
-  "http://localhost:3000", // jeśli frontend czasem tu działa
-  "https://mikel538.github.io", // GitHub Pages origin
-];
-
-// Old manual way of setting URLs
-// export const API_BASE_URL = "https://filmovie-server.onrender.com";
-// export const FRONTEND_BASE_URL = "https://mikel538.github.io/Filmovie";
-// export const API_BASE_URL = "http://localhost:3000";
-// export const FRONTEND_BASE_URL = "http://localhost:1234/Filmovie";
-
-// If env has urls, if not ->
 export const API_BASE_URL =
   process.env.API_BASE_URL || "https://filmovie-server.onrender.com";
 
 export const FRONTEND_BASE_URL =
   process.env.FRONTEND_BASE_URL || "https://mikel538.github.io/Filmovie";
+
+function getOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+const allowedOrigins = new Set(
+  [
+    "http://localhost:1234",
+    "http://localhost:3000",
+    "https://mikel538.github.io",
+    "https://filmovie.mikeldev.online",
+    getOrigin(FRONTEND_BASE_URL),
+  ].filter((origin): origin is string => Boolean(origin)),
+);
 
 export const resendApiKey = process.env.RESEND_API_KEY;
 export const resend = resendApiKey ? new Resend(resendApiKey) : null;
@@ -43,8 +48,10 @@ export const resend = resendApiKey ? new Resend(resendApiKey) : null;
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin))
+      if (!origin || allowedOrigins.has(origin)) {
         return callback(null, true);
+      }
+
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
