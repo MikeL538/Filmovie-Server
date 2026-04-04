@@ -3,13 +3,14 @@ FROM node:22-slim AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY tsconfig.json ./
 COPY src ./src
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 
+RUN npm run db:generate
 RUN npm run build
 RUN npm prune --omit=dev
 
