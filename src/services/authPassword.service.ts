@@ -1,24 +1,23 @@
 import type { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import {
-  loadUsers,
-  saveUsers,
-  getBearerToken,
-} from "./usersManagment.sevice.js";
-
-import type { User } from "../types.js";
+import { getBearerToken } from "./usersManagment.sevice.js";
 import { FRONTEND_BASE_URL, resend, SALT_ROUNDS } from "../app.js";
+import { prisma } from "../lib/prisma.js";
 
 export async function loginUser(req: Request, res: Response) {
   const { login, password } = req.body ?? {};
 
-  const users: User[] = await loadUsers();
+  if (typeof login !== "string" || typeof password !== "string") {
+    return res.status(400).json({ code: "LOGIN_AND_PASSWORD_REQUIRED" });
+  }
 
   const loginFormat =
     login.charAt(0).toUpperCase() + login.slice(1).toLowerCase();
 
-  const user = users.find((u) => u.login === loginFormat);
+  const user = await prisma.user.findUnique({
+    where: { login: loginFormat },
+  });
 
   if (!user) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -32,9 +31,7 @@ export async function loginUser(req: Request, res: Response) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  const isVerified = user.verified === true;
-
-  if (!isVerified) {
+  if (!user.verified) {
     return res.status(403).json({
       code: "LOGIN_403",
       message: "User not verified",
@@ -46,13 +43,15 @@ export async function loginUser(req: Request, res: Response) {
     .createHash("sha256")
     .update(sessionToken)
     .digest("hex");
+  const sessionTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-  user.sessionTokenHash = sessionTokenHash;
-  user.sessionTokenExpiresAt = new Date(
-    Date.now() + 60 * 60 * 1000,
-  ).toISOString();
-
-  await saveUsers(users);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      sessionTokenHash,
+      sessionTokenExpiresAt,
+    },
+  });
 
   return res.status(200).json({
     token: sessionToken,
@@ -63,15 +62,16 @@ export async function loginUser(req: Request, res: Response) {
 
 export async function forgotPassword(req: Request, res: Response) {
   const { email } = req.body ?? {};
-  const users: User[] = await loadUsers();
 
-  if (!email) {
+  if (typeof email !== "string" || !email) {
     return res.status(400).json({ message: "Email is required" });
   }
 
-  const user = users.find((u) => u.email === email);
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
 
-  if (user?.email !== email) {
+  if (!user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
@@ -80,11 +80,7 @@ export async function forgotPassword(req: Request, res: Response) {
     .createHash("sha256")
     .update(passwordResetToken)
     .digest("hex");
-
-  const passwordResetTokenExpiresAt = new Date(
-    Date.now() + 24 * 60 * 60 * 1000,
-  );
-
+  const passwordResetTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const passwordResetLink = `${FRONTEND_BASE_URL}/reset-password.html?token=${passwordResetToken}`;
 
   if (!resend) {
@@ -99,14 +95,13 @@ export async function forgotPassword(req: Request, res: Response) {
     from: "Filmovie <reset-password@mail.mikeldev.online>",
     to: email,
     subject: "Reset your password",
-    html: `<p>Click <a href="${passwordResetLink}">here</a> to reset Your password or use link below:</p>
-   
+    html: `<p>Click <a href="${passwordResetLink}">here</a> to reset your password or use link below:</p>
+
     <p><a href="${passwordResetLink}">${passwordResetLink}</a></p>`,
   });
 
-  if (error) console.log("RESEND ERROR:", error);
-
   if (error) {
+    console.log("RESEND ERROR:", error);
     console.error("Failed to send verification email:", error);
 
     return res.status(502).json({
@@ -115,20 +110,22 @@ export async function forgotPassword(req: Request, res: Response) {
     });
   }
 
-  user!.passwordResetTokenHash = passwordResetTokenHash;
-  user!.passwordResetTokenExpiresAt = passwordResetTokenExpiresAt;
-
-  await saveUsers(users);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetTokenHash,
+      passwordResetTokenExpiresAt,
+    },
+  });
 
   return res.status(200).json({
-    code: "Password changed",
-    message: "Password changed",
+    code: "PASSWORD_RESET_EMAIL_SENT",
+    message: "Password reset email sent",
   });
 }
 
 export async function resetPassword(req: Request, res: Response) {
   const { token, password } = req.body ?? {};
-  const users: User[] = await loadUsers();
 
   if (!token) {
     return res.status(400).json({ code: "TOKEN_REQUIRED" });
@@ -142,7 +139,9 @@ export async function resetPassword(req: Request, res: Response) {
     .createHash("sha256")
     .update(String(token))
     .digest("hex");
-  const user = users.find((u) => u.passwordResetTokenHash === tokenHash);
+  const user = await prisma.user.findFirst({
+    where: { passwordResetTokenHash: tokenHash },
+  });
 
   if (!user) {
     return res.status(400).json({ code: "INVALID_TOKEN" });
@@ -150,16 +149,21 @@ export async function resetPassword(req: Request, res: Response) {
 
   if (
     !user.passwordResetTokenExpiresAt ||
-    new Date(user.passwordResetTokenExpiresAt).getTime() < Date.now()
+    user.passwordResetTokenExpiresAt.getTime() < Date.now()
   ) {
     return res.status(400).json({ code: "TOKEN_EXPIRED" });
   }
 
-  user.hashedPassword = await bcrypt.hash(String(password), SALT_ROUNDS);
-  user.passwordResetTokenHash = null;
-  user.passwordResetTokenExpiresAt = null;
+  const hashedPassword = await bcrypt.hash(String(password), SALT_ROUNDS);
 
-  await saveUsers(users);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      hashedPassword,
+      passwordResetTokenHash: null,
+      passwordResetTokenExpiresAt: null,
+    },
+  });
 
   return res.status(200).json({
     code: "PASSWORD_RESET_SUCCESS",
@@ -174,23 +178,26 @@ export async function logoutClearToken(req: Request, res: Response) {
     return res.status(400).json({ code: "TOKEN_REQUIRED" });
   }
 
-  const users = await loadUsers();
-
   const tokenHash = crypto
     .createHash("sha256")
     .update(String(token))
     .digest("hex");
 
-  const user = users.find((u) => u.sessionTokenHash === tokenHash);
+  const user = await prisma.user.findFirst({
+    where: { sessionTokenHash: tokenHash },
+  });
 
   if (!user) {
     return res.status(400).json({ code: "INVALID_TOKEN" });
   }
 
-  user!.sessionTokenExpiresAt = null;
-  user!.sessionTokenHash = null;
-
-  await saveUsers(users);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      sessionTokenHash: null,
+      sessionTokenExpiresAt: null,
+    },
+  });
 
   return res.status(200).json({ code: "LOGOUT_SUCCESS" });
 }

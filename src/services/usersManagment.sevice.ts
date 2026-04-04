@@ -1,26 +1,6 @@
 import type { Request, Response } from "express";
-import type { User } from "../types.js";
-import fs from "fs/promises";
 import crypto from "crypto";
-
-export async function loadUsers(): Promise<User[]> {
-  try {
-    const data = await fs.readFile("src/users.json", "utf-8");
-    const parsed = JSON.parse(data) as { users: User[] };
-    return parsed.users ?? [];
-  } catch (error) {
-    console.log("Error loading users: ", error);
-    return [];
-  }
-}
-
-export async function saveUsers(users: User[]): Promise<void> {
-  await fs.writeFile(
-    "src/users.json",
-    JSON.stringify({ users }, null, 2),
-    "utf-8",
-  );
-}
+import { prisma } from "../lib/prisma.js";
 
 export function getBearerToken(authHeader?: string): string | null {
   if (!authHeader?.startsWith("Bearer ")) return null;
@@ -28,25 +8,32 @@ export function getBearerToken(authHeader?: string): string | null {
   return authHeader.slice("Bearer ".length);
 }
 
-async function getUserFromAuthHeader(
-  authHeader?: string,
-): Promise<User | null> {
-  const users = await loadUsers();
-
+async function getUserFromAuthHeader(authHeader?: string) {
   const token = getBearerToken(authHeader);
   if (!token) return null;
 
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-  const user = users.find((u) => u.sessionTokenHash === tokenHash);
+  const user = await prisma.user.findFirst({
+    where: { sessionTokenHash: tokenHash },
+  });
+
+  if (!user) {
+    return null;
+  }
 
   if (
-    !user?.sessionTokenExpiresAt ||
-    new Date(user.sessionTokenExpiresAt).getTime() < Date.now()
+    !user.sessionTokenExpiresAt ||
+    user.sessionTokenExpiresAt.getTime() < Date.now()
   ) {
-    user!.sessionTokenHash = null;
-    user!.sessionTokenExpiresAt = null;
-    await saveUsers(users);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        sessionTokenHash: null,
+        sessionTokenExpiresAt: null,
+      },
+    });
+
     return null;
   }
 
@@ -67,14 +54,7 @@ export async function getUserLists(req: Request, res: Response) {
 }
 
 export async function listName(req: Request, res: Response) {
-  const users = await loadUsers();
-  const authUser = await getUserFromAuthHeader(req.headers.authorization);
-
-  if (!authUser) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-  const user = users.find((u) => u.id === authUser.id);
+  const user = await getUserFromAuthHeader(req.headers.authorization);
 
   if (!user) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -95,11 +75,15 @@ export async function listName(req: Request, res: Response) {
     .map((id) => Number(id))
     .filter((id) => Number.isFinite(id));
 
-  user[listName] = normalizedIds;
-  await saveUsers(users);
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      [listName]: normalizedIds,
+    },
+  });
 
   return res.status(200).json({
-    watched: user.watched,
-    queued: user.queued,
+    watched: updatedUser.watched,
+    queued: updatedUser.queued,
   });
 }

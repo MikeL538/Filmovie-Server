@@ -8,7 +8,25 @@ Production API: https://filmovie-server.onrender.com
 
 Frontend project: https://github.com/MikeL538/Filmovie
 
-## What It Provides
+## Runtime Architecture
+
+The backend is an Express API written in TypeScript and backed by PostgreSQL through Prisma.
+Users, auth tokens, verification flow state, and movie lists are stored in the database.
+
+## Tech Stack
+
+- Node.js
+- TypeScript
+- Express
+- Prisma
+- PostgreSQL
+- bcrypt
+- crypto
+- dotenv
+- Resend
+- Docker
+
+## Features
 
 - user registration
 - email verification by email link
@@ -19,66 +37,6 @@ Frontend project: https://github.com/MikeL538/Filmovie
 - `watched` and `queued` movie lists per user
 - list synchronization for the Filmovie frontend
 - CORS configuration for local development and GitHub Pages deployment
-
-## Current Runtime Architecture
-
-The current running backend is an Express API written in TypeScript.
-
-The project is moving toward a database-backed architecture with Prisma and PostgreSQL, but the
-current runtime still persists users and lists in `src/users.json`.
-
-That means:
-
-- the active runtime is still file-based
-- Prisma and PostgreSQL are already configured in the repository
-- the README should treat database support as the target architecture, not the current persistence
-  layer
-
-## Tech Stack
-
-- Node.js
-- TypeScript
-- Express
-- CORS
-- bcrypt
-- crypto
-- dotenv
-- Prisma
-- PostgreSQL-ready configuration
-- Resend
-- Docker
-
-## Features
-
-### Authentication
-
-- `POST /api/auth/register` creates a new account
-- `POST /api/auth/login` logs in a verified user
-- `POST /api/auth/logout` clears the current session token
-- passwords are hashed with `bcrypt`
-- session tokens are random values, stored only as SHA-256 hashes
-- login returns the current user lists together with the session token
-
-### Email Verification
-
-- registration creates a verification token
-- the backend stores only the verification token hash
-- verification is handled by `GET /api/auth/verify-email?token=...`
-- `GET /api/auth/resend-verify-email?login=...` sends a new verification email
-- unverified users cannot log in
-
-### Password Reset
-
-- `POST /api/auth/forgot-password` sends a reset-password email
-- reset links point to the frontend reset page
-- `POST /api/auth/reset-password` sets a new password using the reset token
-- reset tokens are stored only as hashes and expire after a limited time
-
-### User Lists
-
-- `GET /api/users/me/lists` returns the authenticated user's lists
-- `PUT /api/users/me/lists/watched` updates the watched list
-- `PUT /api/users/me/lists/queued` updates the queued list
 
 ## API Overview
 
@@ -102,13 +60,6 @@ Request body:
   "email": "user@example.com"
 }
 ```
-
-Behavior:
-
-- normalizes login to `Firstletterrestlowercase`
-- rejects duplicate login or email
-- hashes password before saving
-- sends a verification email before returning success
 
 Possible responses:
 
@@ -163,6 +114,7 @@ Success response includes:
 
 Possible error cases:
 
+- `400 Bad Request` for missing login or password
 - `401 Unauthorized` for invalid credentials
 - `403 Forbidden` for unverified accounts
 
@@ -272,14 +224,15 @@ This covers local development and the deployed Filmovie frontend on GitHub Pages
 src/
   app.ts                           Express app, routes, middleware, runtime config
   server.ts                        Server bootstrap
-  types.ts                         Runtime user type
-  users.json                       Current file-based persistence
+  lib/
+    prisma.ts                      Prisma client instance
   services/
     authRegistration.service.ts    Registration and email verification flow
     authPassword.service.ts        Login, logout, forgot/reset password flow
-    usersManagment.sevice.ts       User loading, auth lookup, and list endpoints
+    usersManagment.sevice.ts       Auth lookup and list endpoints
 prisma/
-  schema.prisma                    Prisma schema and PostgreSQL datasource
+  schema.prisma                    Prisma schema
+  migrations/                      Prisma migrations
 Dockerfile                         Container build for production runtime
 ```
 
@@ -287,6 +240,7 @@ Dockerfile                         Container build for production runtime
 
 - Node.js 20.19 or newer
 - npm
+- PostgreSQL database
 
 ## Installation
 
@@ -302,7 +256,7 @@ Create a `.env` file in the project root when running locally:
 PORT=3000
 RESEND_API_KEY=your_resend_api_key
 API_BASE_URL=http://localhost:3000
-FRONTEND_BASE_URL=http://localhost:1234
+FRONTEND_BASE_URL=http://localhost:1234/Filmovie
 DATABASE_URL=your_postgresql_connection_string
 ```
 
@@ -312,8 +266,7 @@ Notes:
 - `RESEND_API_KEY` is required for registration and password-reset emails
 - `API_BASE_URL` is used to generate verification links
 - `FRONTEND_BASE_URL` is used to generate reset-password links
-- `DATABASE_URL` is currently for the Prisma/PostgreSQL layer prepared in the repo
-- the current runtime can still start without PostgreSQL because active persistence is file-based
+- `DATABASE_URL` points to the PostgreSQL database used by Prisma
 
 ## Available Scripts
 
@@ -321,11 +274,17 @@ Notes:
 npm run dev
 npm run build
 npm run start
+npm run db:generate
+npm run db:migrate:dev -- --name init
+npm run db:migrate:deploy
 ```
 
 - `npm run dev` runs the TypeScript server in watch mode
-- `npm run build` compiles the app to `dist/`
+- `npm run build` generates the Prisma client and compiles the app to `dist/`
 - `npm run start` runs the compiled production build
+- `npm run db:generate` generates the Prisma client
+- `npm run db:migrate:dev -- --name <migration_name>` creates and applies a local development migration
+- `npm run db:migrate:deploy` applies existing migrations in deployment environments
 
 ## Run Locally
 
@@ -336,6 +295,12 @@ npm run dev
 ```
 
 The API starts on `http://localhost:3000` unless `PORT` is overridden.
+
+### Database setup
+
+```bash
+npm run db:migrate:dev -- --name init
+```
 
 ### Production build
 
@@ -348,8 +313,8 @@ npm run start
 
 The repository includes a multistage Dockerfile.
 
-It builds the TypeScript server, prunes dev dependencies, copies `dist/`, and includes
-`src/users.json` for the current runtime.
+It installs dependencies, generates the Prisma client, builds the TypeScript app, prunes dev
+dependencies, and runs the compiled server in production mode.
 
 ## Integration With Filmovie Frontend
 
@@ -368,8 +333,6 @@ The frontend integration currently lives in:
 
 ## Important Notes
 
-- the repository is being prepared for database-backed runtime, but active persistence is still
-  `src/users.json`
 - session tokens, verification tokens, and reset tokens are stored as hashes
 - email sending depends on Resend configuration
 - because the production server is deployed on Render, cold starts may delay the first request
